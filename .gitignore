@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.venv/
+
+# Environment
+.env
+
+# Build output
+.next/
+__pycache__/
+*.pyc
+
+# Uploads & generated files
+uploads/
+generated-files/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# AiSL legacy git (nested)
+AiSL/.git/
+CLAUDE.md
+docs/
+.claude/
