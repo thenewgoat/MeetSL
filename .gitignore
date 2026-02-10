@@ -23,7 +23,7 @@ Thumbs.db
 .idea/
 
 # AiSL legacy git (nested)
-AiSL/.git/
+AiSL/
 CLAUDE.md
 docs/
 .claude/

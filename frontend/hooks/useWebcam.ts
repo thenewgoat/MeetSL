@@ -23,6 +23,9 @@ export function useWebcam({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fpsLogRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const frameCountRef = useRef(0);
+  const droppedCountRef = useRef(0);
   const [error, setError] = useState<WebcamError>(null);
   const onFrameRef = useRef(onFrame);
   onFrameRef.current = onFrame;
@@ -72,6 +75,9 @@ export function useWebcam({
       canvasRef.current = document.createElement("canvas");
     }
 
+    frameCountRef.current = 0;
+    droppedCountRef.current = 0;
+
     intervalRef.current = setInterval(() => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -90,12 +96,30 @@ export function useWebcam({
       // Strip the data:image/jpeg;base64, prefix
       const base64 = dataUrl.split(",")[1];
       if (base64) {
+        frameCountRef.current++;
         onFrameRef.current(base64, Date.now());
       }
     }, 1000 / fps);
 
+    // Dev metrics: log FPS every 5 seconds
+    if (process.env.NODE_ENV === "development") {
+      let lastCount = 0;
+      let lastDropped = 0;
+      fpsLogRef.current = setInterval(() => {
+        const sent = frameCountRef.current - lastCount;
+        const dropped = droppedCountRef.current - lastDropped;
+        lastCount = frameCountRef.current;
+        lastDropped = droppedCountRef.current;
+        const fpsActual = (sent / 5).toFixed(1);
+        console.log(
+          `[MeetSL] frames: ${sent}/5s (${fpsActual} fps) | dropped: ${dropped}`,
+        );
+      }, 5000);
+    }
+
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (fpsLogRef.current) clearInterval(fpsLogRef.current);
     };
   }, [enabled, fps, maxWidth, jpegQuality]);
 

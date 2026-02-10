@@ -25,6 +25,18 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
 
+    // Close existing socket to prevent duplicates
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    // Clear any pending reconnect
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
@@ -47,7 +59,8 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
     };
 
     ws.onclose = () => {
-      if (!mountedRef.current) return;
+      // Only reconnect if this socket is still the current one
+      if (!mountedRef.current || ws !== wsRef.current) return;
       setConnectionState("reconnecting");
       scheduleReconnect();
     };

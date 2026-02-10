@@ -15,7 +15,15 @@ export interface CommittedToken {
   ts: number;
 }
 
-export function useCommitLogic(config: CommitConfig = DEFAULT_COMMIT_CONFIG) {
+interface UseCommitLogicOptions {
+  config?: CommitConfig;
+  onCommit?: (token: CommittedToken) => void;
+}
+
+export function useCommitLogic(options: UseCommitLogicOptions = {}) {
+  const { config = DEFAULT_COMMIT_CONFIG, onCommit } = options;
+  const onCommitRef = useRef(onCommit);
+  onCommitRef.current = onCommit;
   const [hypothesis, setHypothesis] = useState<Prediction | null>(null);
   const [committedTokens, setCommittedTokens] = useState<CommittedToken[]>([]);
   const windowRef = useRef<Prediction[]>([]);
@@ -45,14 +53,13 @@ export function useCommitLogic(config: CommitConfig = DEFAULT_COMMIT_CONFIG) {
         lastCommittedTokenRef.current = result.token;
         windowRef.current = [];
         setHypothesis(null);
-        setCommittedTokens((prev) => [
-          ...prev,
-          {
-            token: result.token,
-            confidence: result.avgConfidence,
-            ts: result.ts,
-          },
-        ]);
+        const committed: CommittedToken = {
+          token: result.token,
+          confidence: result.avgConfidence,
+          ts: result.ts,
+        };
+        setCommittedTokens((prev) => [...prev, committed]);
+        onCommitRef.current?.(committed);
       }
     },
     [config],
