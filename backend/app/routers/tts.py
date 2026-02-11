@@ -1,3 +1,5 @@
+"""Text-to-speech endpoint using Google TTS."""
+
 import asyncio
 import io
 import logging
@@ -13,11 +15,14 @@ router = APIRouter()
 
 
 class TTSRequest(BaseModel):
+    """Request body for the TTS endpoint."""
+
     text: str
     lang: str = "en"
 
 
 def _generate_mp3(text: str, lang: str) -> io.BytesIO:
+    """Generate an MP3 audio buffer from text using gTTS."""
     buf = io.BytesIO()
     tts = gTTS(text=text, lang=lang, slow=False)
     tts.write_to_fp(buf)
@@ -26,7 +31,8 @@ def _generate_mp3(text: str, lang: str) -> io.BytesIO:
 
 
 @router.post("/tts")
-async def text_to_speech(req: TTSRequest):
+async def text_to_speech(req: TTSRequest) -> StreamingResponse:
+    """Convert text to speech and return an MP3 audio stream."""
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="text must not be empty")
 

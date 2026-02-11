@@ -4,6 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type STTError = "not-supported" | "not-allowed" | "no-speech" | null;
 
+export type CaptionSource = "user" | "other";
+
+export interface CaptionSegment {
+  text: string;
+  source: CaptionSource;
+}
+
 interface SpeechRecognitionEvent {
   resultIndex: number;
   results: SpeechRecognitionResultList;
@@ -13,29 +20,38 @@ interface SpeechRecognitionErrorEvent {
   error: string;
 }
 
-const TRANSCRIPT_MAX_LENGTH = 2000;
+const MAX_SEGMENTS = 200;
 
-export function useSpeechToText() {
+interface UseSpeechToTextOptions {
+  isTTSActive?: () => boolean;
+}
+
+export function useSpeechToText({ isTTSActive }: UseSpeechToTextOptions = {}) {
   const [enabled, setEnabled] = useState(false);
-  const [transcript, setTranscript] = useState("");
+  const [segments, setSegments] = useState<CaptionSegment[]>([]);
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<STTError>(null);
+  const [supported, setSupported] = useState(false);
   const recognitionRef = useRef<unknown>(null);
   const enabledRef = useRef(false);
   enabledRef.current = enabled;
+  const isTTSActiveRef = useRef(isTTSActive);
+  isTTSActiveRef.current = isTTSActive;
 
-  const supported =
-    typeof window !== "undefined" &&
-    ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
+  useEffect(() => {
+    setSupported(
+      "webkitSpeechRecognition" in window || "SpeechRecognition" in window,
+    );
+  }, []);
 
   const start = useCallback(() => {
-    if (!supported) {
+    // Check support at call time to avoid stale closure over `supported` state
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SpeechRecognition) {
       setError("not-supported");
       return;
     }
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -53,11 +69,10 @@ export function useSpeechToText() {
         }
       }
       if (finalText) {
-        setTranscript((prev) => {
-          const next = prev ? prev + " " + finalText : finalText;
-          return next.length > TRANSCRIPT_MAX_LENGTH
-            ? next.slice(next.length - TRANSCRIPT_MAX_LENGTH)
-            : next;
+        const source: CaptionSource = isTTSActiveRef.current?.() ? "user" : "other";
+        setSegments((prev) => {
+          const next = [...prev, { text: finalText, source }];
+          return next.length > MAX_SEGMENTS ? next.slice(next.length - MAX_SEGMENTS) : next;
         });
         setInterim("");
       } else {
@@ -93,7 +108,7 @@ export function useSpeechToText() {
     } catch {
       setError("not-supported");
     }
-  }, [supported]);
+  }, []);
 
   const stop = useCallback(() => {
     const recognition = recognitionRef.current as { stop: () => void } | null;
@@ -118,13 +133,17 @@ export function useSpeechToText() {
   }, []);
 
   const clearTranscript = useCallback(() => {
-    setTranscript("");
+    setSegments([]);
     setInterim("");
   }, []);
+
+  // Plain text transcript for passing to LLM context
+  const transcript = segments.map((s) => s.text).join(" ");
 
   return {
     enabled,
     toggle,
+    segments,
     transcript,
     interim,
     supported,

@@ -1,3 +1,5 @@
+"""Pydantic schemas for the LLM suggestion endpoint."""
+
 from pydantic import BaseModel
 
 

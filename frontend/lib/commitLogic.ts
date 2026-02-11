@@ -19,8 +19,8 @@ export interface CommitResult {
 
 export const DEFAULT_COMMIT_CONFIG: CommitConfig = {
   windowSize: 10,
-  stabilityThreshold: 6,
-  confidenceThreshold: 0.7,
+  stabilityThreshold: 4,
+  confidenceThreshold: 0.5,
   cooldownMs: 1500,
 };
 

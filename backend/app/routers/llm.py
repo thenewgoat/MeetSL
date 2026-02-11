@@ -1,7 +1,8 @@
+"""LLM suggestion endpoint for Assist Mode."""
+
 import logging
 
 from fastapi import APIRouter, HTTPException
-
 from schemas.llm_suggest import LLMSuggestRequest, LLMSuggestResponse
 from services.llm_service import suggest
 
@@ -11,7 +12,8 @@ router = APIRouter()
 
 
 @router.post("/llm/suggest", response_model=LLMSuggestResponse)
-async def llm_suggest(req: LLMSuggestRequest):
+async def llm_suggest(req: LLMSuggestRequest) -> LLMSuggestResponse:
+    """Suggest a fluent phrase from recognized sign tokens via LLM."""
     if not req.tokens:
         raise HTTPException(status_code=400, detail="At least one token is required")
 

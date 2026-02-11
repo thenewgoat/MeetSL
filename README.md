@@ -2,7 +2,9 @@
 
 Real-time meeting accessibility bridge that translates sign language to text/speech and speech to text, designed for online meetings and interviews.
 
-Built on [AiSL](https://github.com/Vinny0712/AiSL) and refactored for live streaming.
+## Acknowledgments
+
+Sign recognition model (`gesture_recognizer_9.task`) trained by [AiSL](https://github.com/Vinny0712/AiSL) on the [WLASL](https://dxli94.github.io/WLASL/) dataset. Used with permission.
 
 ## How It Works
 
@@ -11,6 +13,9 @@ Built on [AiSL](https://github.com/Vinny0712/AiSL) and refactored for live strea
 3. Predictions are sent back to the client with token + confidence
 4. Client-side commit logic stabilizes output (rolling window) to prevent jitter
 5. Committed signs appear as captions; hypotheses show as live previews
+6. **Direct Mode**: committed tokens are spoken immediately via browser TTS
+7. **Assist Mode**: tokens are buffered and sent to GPT-4o-mini, which suggests fluent phrasing with uncertainty labeling — medium/high uncertainty requires user confirmation before speaking
+8. Browser STT captures meeting audio as live captions, with source labeling (You / Other)
 
 ## Stack
 
@@ -19,8 +24,9 @@ Built on [AiSL](https://github.com/Vinny0712/AiSL) and refactored for live strea
 | Frontend | Next.js 14 + TypeScript + Tailwind CSS |
 | Backend | FastAPI (Python) |
 | Sign Recognition | MediaPipe Gesture Recognizer |
-| Speech-to-Text | Browser Web Speech API (planned) |
-| Text-to-Speech | Google TTS / browser TTS (planned) |
+| Speech-to-Text | Browser Web Speech API |
+| Text-to-Speech | Browser SpeechSynthesis (primary) / gTTS (fallback) |
+| LLM Post-processor | OpenAI GPT-4o-mini (Assist Mode) |
 | Transport | WebSocket |
 
 ## Prerequisites
@@ -61,12 +67,15 @@ The frontend runs on http://localhost:3000.
 
 ### Use It
 
-Open http://localhost:3000/session/demo in Chrome and grant webcam access.
+Open http://localhost:3000/session/demo in Chrome and grant webcam + microphone access.
 
 - Green dot = connected to backend
 - Perform signs in front of the camera
 - Gray italic text = live hypothesis (unstable)
 - Bold text with colored dots = committed recognition (stable)
+- Toggle **Speaker** to hear committed signs via TTS
+- Toggle **Captions** to see live speech-to-text from meeting audio
+- Toggle **Direct / Assist** to switch between raw token output and LLM-assisted phrasing
 
 ## Recognized Vocabulary
 
@@ -81,8 +90,8 @@ Full list: before, thin, cool, drink, go, computer, who, cousin, help, candy, th
 The client prevents jitter with a rolling-window algorithm:
 
 - **Window size:** 10 predictions
-- **Stability threshold:** Same token in 6+ of last 10
-- **Confidence threshold:** Average confidence >= 0.7
+- **Stability threshold:** Same token in 4+ of last 10
+- **Confidence threshold:** Average confidence >= 0.5
 - **Cooldown:** 1.5s between commits
 - **Dedup:** Consecutive identical commits are suppressed
 
@@ -92,8 +101,8 @@ The client prevents jitter with a rolling-window algorithm:
 |----------|-------------|
 | `GET /healthz` | Health check |
 | `WS /ws/session/{sessionId}` | Frame streaming + sign predictions |
-| `POST /tts` | Text-to-speech (planned) |
-| `POST /llm/suggest` | LLM assist mode (planned) |
+| `POST /tts` | Text-to-speech via gTTS |
+| `POST /llm/suggest` | LLM-assisted phrasing (Assist Mode) |
 
 ### WebSocket Messages
 
@@ -107,6 +116,27 @@ The client prevents jitter with a rolling-window algorithm:
 { "type": "sign_pred", "token": "yes", "confidence": 0.92, "ts": 1234567890.123 }
 ```
 
+### LLM Suggest
+
+**POST /llm/suggest:**
+```json
+{
+  "tokens": [{ "token": "help", "confidence": 0.85, "ts": 1234567890 }],
+  "domain": "meeting",
+  "recent_speech_context": "Can you tell me about yourself?"
+}
+```
+
+**Response:**
+```json
+{
+  "suggested_text": "I need help",
+  "uncertainty_level": "low",
+  "alternatives": ["Help me please"],
+  "needs_confirmation": false
+}
+```
+
 ## Project Structure
 
 ```
@@ -116,12 +146,14 @@ backend/
     routers/
       health.py          # GET /healthz
       session.py         # WS /ws/session/{sessionId}
-      tts.py             # POST /tts (planned)
-      llm.py             # POST /llm/suggest (planned)
+      tts.py             # POST /tts
+      llm.py             # POST /llm/suggest
     services/
       recognizer.py      # MediaPipe singleton + recognize_frame()
+      llm_service.py     # OpenAI GPT-4o-mini integration
     schemas/
-      ws_messages.py      # Pydantic models for WebSocket JSON
+      ws_messages.py     # Pydantic models for WebSocket JSON
+      llm_suggest.py     # LLM request/response schemas
     models/
       gesture_recognizer_9.task  # MediaPipe model file
 frontend/
@@ -133,27 +165,34 @@ frontend/
     useWebSocket.ts       # WebSocket with reconnect + backpressure
     useWebcam.ts          # Frame capture + throttling
     useCommitLogic.ts     # React state for commit logic
+    useTTS.ts             # Browser SpeechSynthesis wrapper
+    useSpeechToText.ts    # Browser Web Speech API (STT)
+    useLLMSuggest.ts      # HTTP client for /llm/suggest
   lib/
     commitLogic.ts        # Pure commit evaluation function
 docs/
   mvp.md                  # Full spec
-  phase2-summary.md       # Current implementation status
+  tech-stack.md           # Tech stack documentation
 ```
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:8000/ws/session` | WebSocket base URL |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Yes (for Assist Mode) | OpenAI API key |
+| `NEXT_PUBLIC_WS_URL` | No | WebSocket base URL (auto-detected from window.location) |
+| `NEXT_PUBLIC_API_URL` | No | Backend API base URL (auto-detected from window.location) |
 
 ## Current Status
 
-**Phase 2 complete** — real-time sign recognition with streaming and commit logic.
+**All phases complete.**
 
 - [x] WebSocket frame streaming
 - [x] MediaPipe inference
 - [x] Client-side commit/stabilization
 - [x] Reconnect with exponential backoff
-- [ ] Text-to-Speech (Phase 3)
-- [ ] Speech-to-Text (Phase 3)
-- [ ] LLM Assist Mode (Phase 4)
+- [x] Text-to-Speech (browser SpeechSynthesis)
+- [x] Speech-to-Text (browser Web Speech API)
+- [x] LLM Assist Mode (OpenAI GPT-4o-mini)
+- [x] Reliability hardening (session validation, latency logging, dev metrics)
+- [x] Caption source labeling (You / Other)

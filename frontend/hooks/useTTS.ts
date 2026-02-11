@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useTTS() {
   const [enabled, setEnabled] = useState(false);
-  const supported =
-    typeof window !== "undefined" && "speechSynthesis" in window;
-  const speakingRef = useRef(false);
+  const [supported, setSupported] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const lastSpokeAtRef = useRef(0);
+
+  useEffect(() => {
+    setSupported("speechSynthesis" in window);
+  }, []);
 
   const speak = useCallback(
     (text: string) => {
@@ -18,13 +22,15 @@ export function useTTS() {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 1.0;
       utterance.onstart = () => {
-        speakingRef.current = true;
+        setIsSpeaking(true);
       };
       utterance.onend = () => {
-        speakingRef.current = false;
+        setIsSpeaking(false);
+        lastSpokeAtRef.current = Date.now();
       };
       utterance.onerror = () => {
-        speakingRef.current = false;
+        setIsSpeaking(false);
+        lastSpokeAtRef.current = Date.now();
       };
       window.speechSynthesis.speak(utterance);
     },
@@ -41,5 +47,11 @@ export function useTTS() {
     });
   }, []);
 
-  return { speak, enabled, toggle, supported };
+  const spokeRecently = useCallback(
+    (graceMs: number = 2000) =>
+      isSpeaking || Date.now() - lastSpokeAtRef.current < graceMs,
+    [isSpeaking],
+  );
+
+  return { speak, enabled, toggle, supported, isSpeaking, spokeRecently };
 }

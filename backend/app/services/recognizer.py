@@ -1,3 +1,5 @@
+"""MediaPipe gesture recognizer singleton and frame inference."""
+
 import base64
 import io
 import logging

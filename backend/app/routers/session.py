@@ -1,3 +1,5 @@
+"""WebSocket session endpoint for real-time sign recognition."""
+
 import asyncio
 import json
 import logging
@@ -5,7 +7,6 @@ import re
 import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-
 from schemas.ws_messages import FrameMessage, SignPrediction
 from services.recognizer import recognize_frame
 
@@ -18,7 +19,13 @@ STATS_INTERVAL = 10  # Log latency stats every N frames
 
 
 @router.websocket("/ws/session/{session_id}")
-async def websocket_session(websocket: WebSocket, session_id: str):
+async def websocket_session(websocket: WebSocket, session_id: str) -> None:
+    """Accept webcam frames and stream back sign predictions.
+
+    Args:
+        websocket: The WebSocket connection.
+        session_id: Alphanumeric session identifier.
+    """
     # Validate session_id before accepting
     if not SESSION_ID_RE.match(session_id):
         await websocket.accept()

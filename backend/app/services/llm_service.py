@@ -1,25 +1,28 @@
+"""LLM integration service for sign token gap-filling."""
+
 import json
 import logging
 import os
 
-import anthropic
-
+from openai import AsyncOpenAI
 from schemas.llm_suggest import LLMSuggestResponse
 
 logger = logging.getLogger(__name__)
 
-_client: anthropic.AsyncAnthropic | None = None
+_client: AsyncOpenAI | None = None
 
 SYSTEM_PROMPT = """\
 You are a sign language interpreter assistant for real-time meetings.
 
 You receive a list of recognized sign language tokens with confidence scores. \
-Your job is to suggest a fluent English phrase that preserves the meaning of ALL recognized tokens.
+Your job is to suggest a fluent English phrase that preserves the meaning \
+of ALL recognized tokens.
 
 RULES:
 1. NEVER add information, facts, or words not directly implied by the tokens.
 2. NEVER drop or contradict any recognized token.
-3. You may add small grammatical connectors (articles, prepositions) to make the phrase natural.
+3. You may add small grammatical connectors (articles, prepositions) \
+to make the phrase natural.
 4. Keep the output short and conversational.
 5. If the tokens are ambiguous, provide 1-2 brief alternatives.
 6. Respond with ONLY a JSON object — no markdown, no explanation.
@@ -32,13 +35,14 @@ Required JSON format:
 """
 
 
-def _get_client() -> anthropic.AsyncAnthropic:
+def _get_client() -> AsyncOpenAI:
+    """Return the OpenAI async client, initializing on first call."""
     global _client
     if _client is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set")
-        _client = anthropic.AsyncAnthropic(api_key=api_key)
+            raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+        _client = AsyncOpenAI(api_key=api_key)
     return _client
 
 
@@ -52,9 +56,9 @@ def _compute_uncertainty(
     confidences = [t.get("confidence", 0) for t in tokens]
     min_conf = min(confidences)
 
-    if min_conf >= 0.85:
+    if min_conf >= 0.6:
         return "low", False
-    elif min_conf >= 0.7:
+    elif min_conf >= 0.5:
         return "medium", True
     else:
         return "high", True
@@ -77,7 +81,7 @@ async def suggest(
     domain: str = "meeting",
     recent_speech_context: str | None = None,
 ) -> LLMSuggestResponse:
-    """Call Claude to suggest a fluent phrase from recognized sign tokens."""
+    """Call ChatGPT to suggest a fluent phrase from recognized sign tokens."""
     uncertainty, needs_conf = _compute_uncertainty(tokens)
 
     # Build user message
@@ -91,15 +95,17 @@ async def suggest(
 
     try:
         client = _get_client()
-        response = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=200,
             temperature=0,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
         )
 
-        raw_text = response.content[0].text.strip()
+        raw_text = response.choices[0].message.content.strip()
         # Strip markdown fences if present
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()

@@ -1,3 +1,5 @@
+"""Pydantic schemas for WebSocket frame and prediction messages."""
+
 from pydantic import BaseModel
 
 

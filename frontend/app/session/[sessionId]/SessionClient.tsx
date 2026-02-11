@@ -5,14 +5,18 @@ import { useWebSocket, ConnectionState } from "@/hooks/useWebSocket";
 import { useWebcam } from "@/hooks/useWebcam";
 import { useCommitLogic, CommittedToken } from "@/hooks/useCommitLogic";
 import { useTTS } from "@/hooks/useTTS";
-import { useSpeechToText } from "@/hooks/useSpeechToText";
+import { useSpeechToText, CaptionSegment } from "@/hooks/useSpeechToText";
 import { useLLMSuggest, LLMSuggestion, TokenInput } from "@/hooks/useLLMSuggest";
 import { Prediction } from "@/lib/commitLogic";
 
 type Mode = "direct" | "assist";
 
-const WS_URL =
-  process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000/ws/session";
+function getWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window === "undefined") return "ws://localhost:8000/ws/session";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/ws/session`;
+}
 
 interface SessionClientProps {
   sessionId: string;
@@ -96,7 +100,7 @@ function SuggestionPanel({
 }) {
   if (loading) {
     return (
-      <div className="w-full max-w-2xl rounded-lg border border-blue-800 bg-blue-950/30 p-4 mb-4">
+      <div className="w-full rounded-lg border border-blue-800 bg-blue-950/30 p-4 mb-4">
         <span className="text-xs text-blue-400 uppercase tracking-wider">
           Generating suggestion...
         </span>
@@ -106,7 +110,7 @@ function SuggestionPanel({
   if (!suggestion) return null;
 
   return (
-    <div className="w-full max-w-2xl rounded-lg border border-blue-800 bg-blue-950/30 p-4 mb-4">
+    <div className="w-full rounded-lg border border-blue-800 bg-blue-950/30 p-4 mb-4">
       <div className="flex items-center gap-2 mb-2">
         <span className="text-xs text-blue-400 uppercase tracking-wider">
           Suggested
@@ -145,8 +149,10 @@ const ASSIST_TRIGGER_COUNT = 2; // Call LLM after every N committed tokens
 const ASSIST_IDLE_MS = 3000; // Or after N ms idle since last commit
 
 export default function SessionClient({ sessionId }: SessionClientProps) {
+  const [wsUrl] = useState(getWsUrl);
+
   const tts = useTTS();
-  const stt = useSpeechToText();
+  const stt = useSpeechToText({ isTTSActive: tts.spokeRecently });
   const llm = useLLMSuggest();
 
   // Assist mode state
@@ -265,7 +271,7 @@ export default function SessionClient({ sessionId }: SessionClientProps) {
   );
 
   const { connectionState, send } = useWebSocket({
-    url: `${WS_URL}/${sessionId}`,
+    url: `${wsUrl}/${sessionId}`,
     onMessage,
   });
 
@@ -317,9 +323,9 @@ export default function SessionClient({ sessionId }: SessionClientProps) {
   }, [llm.clear]);
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-gray-950 text-white p-6">
+    <main className="flex min-h-screen flex-col bg-gray-950 text-white p-6">
       {/* Header */}
-      <div className="flex w-full max-w-2xl items-center justify-between mb-4">
+      <div className="flex w-full items-center justify-between mb-4">
         <h1 className="text-2xl font-bold">MeetSL</h1>
         <div className="flex items-center gap-4">
           <span className="text-xs text-gray-500 font-mono">{sessionId}</span>
@@ -334,7 +340,7 @@ export default function SessionClient({ sessionId }: SessionClientProps) {
       </div>
 
       {/* Controls row */}
-      <div className="flex w-full max-w-2xl items-center gap-3 mb-4">
+      <div className="flex w-full items-center gap-3 mb-4">
         <ToggleButton
           label={mode === "direct" ? "Direct" : "Assist"}
           active={mode === "assist"}
@@ -360,122 +366,145 @@ export default function SessionClient({ sessionId }: SessionClientProps) {
         )}
       </div>
 
-      {/* Webcam preview */}
-      <div className="relative w-full max-w-2xl aspect-video bg-gray-900 rounded-lg overflow-hidden mb-6">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="w-full h-full object-cover -scale-x-100"
-        />
-        {webcamError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80">
-            <p className="text-red-400 text-sm">
-              {webcamError === "not-allowed"
-                ? "Camera access denied. Please allow camera permissions."
-                : webcamError === "not-found"
-                  ? "No camera found."
-                  : "Camera error."}
-            </p>
+      {/* Two-column layout (stacks on mobile) */}
+      <div className="flex flex-col lg:flex-row w-full gap-6 flex-1 min-h-0">
+        {/* Left column: camera + signs + suggestion */}
+        <div className="flex flex-col flex-1 min-w-0">
+          {/* Webcam preview */}
+          <div className="relative mx-auto aspect-video bg-gray-900 rounded-lg overflow-hidden mb-4">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover -scale-x-100"
+            />
+            {webcamError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80">
+                <p className="text-red-400 text-sm">
+                  {webcamError === "not-allowed"
+                    ? "Camera access denied. Please allow camera permissions."
+                    : webcamError === "not-found"
+                      ? "No camera found."
+                      : "Camera error."}
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Hypothesis (live, unstable) */}
-      <div className="w-full max-w-2xl mb-4 min-h-[2rem]">
-        {hypothesis && (
-          <p className="text-gray-400 text-lg">
-            <span className="italic">{hypothesis.token}</span>
-            <span className="text-xs text-gray-500 ml-2">
-              {Math.round(hypothesis.confidence * 100)}%
-            </span>
-          </p>
-        )}
-      </div>
+          {/* Hypothesis (live, unstable) */}
+          <div className="mb-3 min-h-[2rem]">
+            {hypothesis && (
+              <p className="text-gray-400 text-lg">
+                <span className="italic">{hypothesis.token}</span>
+                <span className="text-xs text-gray-500 ml-2">
+                  {Math.round(hypothesis.confidence * 100)}%
+                </span>
+              </p>
+            )}
+          </div>
 
-      {/* Committed sign captions */}
-      <div className="w-full max-w-2xl rounded-lg border border-gray-700 p-4 min-h-[6rem] mb-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-gray-500 uppercase tracking-wider">
-            Recognized Signs
-          </span>
-          {committedTokens.length > 0 && (
-            <button
-              onClick={clearCommitted}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        {committedTokens.length === 0 ? (
-          <p className="text-gray-600 text-sm">
-            Perform signs in front of the camera to see recognized text here.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {committedTokens.map((ct: CommittedToken, i: number) => (
-              <span
-                key={`${ct.ts}-${i}`}
-                className="inline-flex items-center gap-1.5 text-xl font-bold"
-              >
-                <ConfidenceDot confidence={ct.confidence} />
-                {ct.token}
+          {/* Committed sign captions */}
+          <div className="rounded-lg border border-gray-700 p-4 min-h-[6rem] mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-500 uppercase tracking-wider">
+                Recognized Signs
               </span>
-            ))}
+              {committedTokens.length > 0 && (
+                <button
+                  onClick={clearCommitted}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {committedTokens.length === 0 ? (
+              <p className="text-gray-600 text-sm">
+                Perform signs in front of the camera to see recognized text here.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {committedTokens.map((ct: CommittedToken, i: number) => (
+                  <span
+                    key={`${ct.ts}-${i}`}
+                    className="inline-flex items-center gap-1.5 text-xl font-bold"
+                  >
+                    <ConfidenceDot confidence={ct.confidence} />
+                    {ct.token}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* LLM Suggestion panel (Assist mode only) */}
-      {mode === "assist" && (
-        <SuggestionPanel
-          suggestion={llm.suggestion}
-          loading={llm.loading}
-          onSpeak={handleSpeak}
-          onReject={handleReject}
-        />
-      )}
-
-      {/* Speech-to-text captions */}
-      <div className="w-full max-w-2xl rounded-lg border border-gray-700 p-4 min-h-[6rem]">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-gray-500 uppercase tracking-wider">
-            Speech Captions
-          </span>
-          {stt.transcript && (
-            <button
-              onClick={stt.clearTranscript}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              Clear
-            </button>
-          )}
         </div>
-        {!stt.supported ? (
-          <p className="text-gray-600 text-sm">
-            Speech recognition is not supported in this browser. Please use Chrome.
-          </p>
-        ) : stt.error === "not-allowed" ? (
-          <p className="text-red-400 text-sm">
-            Microphone access denied. Please allow microphone permissions.
-          </p>
-        ) : !stt.enabled ? (
-          <p className="text-gray-600 text-sm">
-            Enable &quot;Captions&quot; to see speech-to-text here.
-          </p>
-        ) : (
-          <p className="text-base leading-relaxed">
-            <span className="text-white">{stt.transcript}</span>
-            {stt.interim && (
-              <span className="text-gray-400 italic"> {stt.interim}</span>
-            )}
-            {!stt.transcript && !stt.interim && (
-              <span className="text-gray-600">Listening...</span>
-            )}
-          </p>
-        )}
+
+        {/* Right column: suggestion + conversation */}
+        <div className="flex flex-col w-full lg:w-80 lg:shrink-0">
+          {/* LLM Suggestion panel (Assist mode only) */}
+          {mode === "assist" && (
+            <SuggestionPanel
+              suggestion={llm.suggestion}
+              loading={llm.loading}
+              onSpeak={handleSpeak}
+              onReject={handleReject}
+            />
+          )}
+          <div className="rounded-lg border border-gray-700 p-4 flex-1 flex flex-col min-h-[12rem] lg:min-h-0">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-500 uppercase tracking-wider">
+                Conversation
+              </span>
+              {stt.segments.length > 0 && (
+                <button
+                  onClick={stt.clearTranscript}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {!stt.supported ? (
+                <p className="text-gray-600 text-sm">
+                  Speech recognition is not supported in this browser. Please use Chrome.
+                </p>
+              ) : stt.error === "not-allowed" ? (
+                <p className="text-red-400 text-sm">
+                  Microphone access denied. Please allow microphone permissions.
+                </p>
+              ) : !stt.enabled ? (
+                <p className="text-gray-600 text-sm">
+                  Enable &quot;Captions&quot; to see speech-to-text here.
+                </p>
+              ) : (
+                <div className="text-sm leading-relaxed space-y-1.5">
+                  {stt.segments.map((seg: CaptionSegment, i: number) => (
+                    <p key={i}>
+                      <span
+                        className={`text-xs font-medium mr-1.5 ${
+                          seg.source === "user"
+                            ? "text-blue-400"
+                            : "text-emerald-400"
+                        }`}
+                      >
+                        {seg.source === "user" ? "You:" : "Other:"}
+                      </span>
+                      <span className="text-white">{seg.text}</span>
+                    </p>
+                  ))}
+                  {stt.interim && (
+                    <p className="text-gray-400 italic">{stt.interim}</p>
+                  )}
+                  {stt.segments.length === 0 && !stt.interim && (
+                    <p className="text-gray-600">Listening...</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );

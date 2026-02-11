@@ -8,4 +8,7 @@ gtts>=2.5.0,<3.0
 websockets>=14.0,<15.0
 Pillow>=10.0.0,<12.0
 numpy>=1.26.0,<3.0
-anthropic>=0.42.0,<1.0
+openai>=1.50.0,<2.0
+
+# Dev dependencies
+# ruff>=0.9.0  # linter/formatter — install with: pip install ruff
