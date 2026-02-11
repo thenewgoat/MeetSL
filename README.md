@@ -79,11 +79,9 @@ Open http://localhost:3000/session/demo in Chrome and grant webcam + microphone 
 
 ## Recognized Vocabulary
 
-The model (`gesture_recognizer_9.task`) recognizes 50 ASL signs trained on WLASL. Meeting-relevant signs include:
+The model (`gesture_recognizer_9.task`) recognizes 50 ASL signs trained on WLASL. Recognized signs include:
 
-**yes, no, help, call, check, go, change, what, who, why, take, play, cool, computer, family, mother, brother, woman, man**
-
-Full list: before, thin, cool, drink, go, computer, who, cousin, help, candy, thanksgiving, bed, bowling, tall, accident, short, trade, yes, what, later, man, shirt, change, corn, dark, last, pizza, basketball, call, cold, deaf, no, walk, mother, woman, dog, family, apple, play, letter, thursday, bar, brother, check, laugh, room, take, why, example, far
+yes, no, help, call, check, go, change, what, who, why, take, play, cool, computer, family, mother, brother, woman, man, before, thin, cool, drink, go, computer, who, cousin, help, candy, thanksgiving, bed, bowling, tall, accident, short, trade, yes, what, later, man, shirt, change, corn, dark, last, pizza, basketball, call, cold, deaf, no, walk, mother, woman, dog, family, apple, play, letter, thursday, bar, brother, check, laugh, room, take, why, example, far
 
 ## Commit Logic
 
@@ -182,17 +180,3 @@ docs/
 | `OPENAI_API_KEY` | Yes (for Assist Mode) | OpenAI API key |
 | `NEXT_PUBLIC_WS_URL` | No | WebSocket base URL (auto-detected from window.location) |
 | `NEXT_PUBLIC_API_URL` | No | Backend API base URL (auto-detected from window.location) |
-
-## Current Status
-
-**All phases complete.**
-
-- [x] WebSocket frame streaming
-- [x] MediaPipe inference
-- [x] Client-side commit/stabilization
-- [x] Reconnect with exponential backoff
-- [x] Text-to-Speech (browser SpeechSynthesis)
-- [x] Speech-to-Text (browser Web Speech API)
-- [x] LLM Assist Mode (OpenAI GPT-4o-mini)
-- [x] Reliability hardening (session validation, latency logging, dev metrics)
-- [x] Caption source labeling (You / Other)
