@@ -45,7 +45,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cd app
-uv run uvicorn main:app --reload
+uvicorn main:app --reload
 ```
 
 The backend runs on http://localhost:8000. Verify with:
